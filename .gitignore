@@ -1,0 +1,6 @@
+
+results/
+
+# dev
+.vscode
+__pycache__
