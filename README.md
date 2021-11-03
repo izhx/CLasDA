@@ -5,3 +5,5 @@ Code for ACL-IJCNLP 2021 paper: "[Crowdsourcing Learning as Domain Adaptation: A
 Coming soon!
 
 I'm trying to rewrite the code with allennlp.
+
+For the original experiment code, please refer to [crowd-NER](https://github.com/izhx/crowd-NER).
