@@ -9,7 +9,7 @@ local adapter_kwargs = {
 
 local getattr (obj, name, default) = if std.objectHas(obj, name) then obj[name] else default;
 
-function (data, model) {
+function (data, model, trainer) {
     // [if std.objectHas(data, "exclude") then "exclude"]: data.exclude,
     dataset_reader : data.reader + {
         token_indexers: {
@@ -30,16 +30,13 @@ function (data, model) {
     evaluate_on_test: if data.path.test == null then false else true,
     model: model + {
         matched_embedder:: self.matched_embedder, // hack for removing model.matched_embedder
-        // type: model.type,
         text_field_embedder: {
             token_embedders: {
                 bert: {
                     type: "transformer_mismatched",
+                    // sub_token_mode: "first",
                     matched_embedder: $["dataset_reader"].token_indexers.bert + {
-                        type:
-                            if std.startsWith(model.type, "pgn")
-                            then "pgn_adapter_transformer"
-                            else "adapter_transformer",
+                        type: "adapter_transformer",
                         adapter_layers: adapter_layers,
                         adapter_kwargs: adapter_kwargs
                     } + model.matched_embedder
@@ -48,7 +45,9 @@ function (data, model) {
         },
         encoder: {
             type: "lstm",
-            hidden_size: std.parseInt(std.extVar("LSTM_SIZE")),
+            input_size: 768,
+            hidden_size: 384,
+            bidirectional: true,
             num_layers: 1
         },
         label_namespace: $["dataset_reader"].label_namespace,
@@ -73,17 +72,12 @@ function (data, model) {
     pytorch_seed: self.random_seed,
     trainer: {
         cuda_device: 0,
-        num_epochs: 50,
-        grad_norm: 5.0,
+        num_epochs: 25,
+        // grad_norm: 5.0,
         patience: 5,
         validation_metric: "+f1-measure-overall",
-        optimizer: {
-            // type: if std.startsWith(model.bert.type, "pretrained_trans") then "huggingface_adamw" else "adam",
-            type: "huggingface_adamw",
-            lr: 1e-3,
-            weight_decay: 0.01,
-            correct_bias: true,
-            parameter_groups: [[[".*transformer_model.*"], {"lr": 1e-5}]]
-        },
-    },
+        optimizer: { type: "adam", lr: 1e-3 },
+        callbacks: [ { type: "distributed_test" } ],
+    } + trainer,
+    vocabulary: { type: "from_files", directory: data.path.prefix + "vocabulary" }
 }

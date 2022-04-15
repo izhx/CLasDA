@@ -1,12 +1,12 @@
-from typing import Dict, List, Optional, Set, Iterable
+from typing import Dict, List, Optional, Set, Iterable, Tuple
 import itertools
 import logging
 
-from overrides import overrides
-
+import torch
+# from transformers import PreTrainedTokenizerFast
 # from allennlp.common.checks import ConfigurationError
 from allennlp.data.dataset_readers.dataset_reader import DatasetReader, PathOrStr
-from allennlp.data.fields import TextField, SequenceLabelField, LabelField, Field, MetadataField
+from allennlp.data.fields import TextField, SequenceLabelField, TensorField, Field, MetadataField
 from allennlp.data.instance import Instance
 from allennlp.data.token_indexers import TokenIndexer
 from allennlp.data.tokenizers import Token
@@ -65,7 +65,6 @@ class Conll2003NerCrowdDatasetReader(DatasetReader):
         self.label_namespace = label_namespace
         self.exclude_workers: Set[int] = self.exclude_ID[exclude]
 
-    @overrides
     def _read(self, file_path: PathOrStr) -> Iterable[Instance]:
         with open(file_path, "r") as data_file:
             logger.info("Reading instances from lines in file at: %s", file_path)
@@ -102,15 +101,31 @@ class Conll2003NerCrowdDatasetReader(DatasetReader):
     def text_to_instance(  # type: ignore
         self,
         words: List[str],
-        tags: List[str] = None,
+        tags: List[str],
         worker: int = -1
     ) -> Instance:
         """
         worker == -1 means we don't use annotator information.
         """
+        # words, tags = self.expand_word_piece(words, tags)
         sequence = TextField([Token(w) for w in words], self._token_indexers)
         fields: Dict[str, Field] = {"tokens": sequence}
         fields["metadata"] = MetadataField({"words": words})
         fields["tags"] = SequenceLabelField(tags, sequence, self.label_namespace)
-        fields["worker"] = LabelField(worker, "worker", True)
+        fields["worker"] = TensorField(torch.tensor(worker), dtype=torch.long)
         return Instance(fields)
+
+    # def expand_word_piece(self, words, tags) -> Tuple[List[str], List[str]]:
+    #     tokenizer: PreTrainedTokenizerFast = self._token_indexers['bert']._tokenizer
+    #     expanded_words, expanded_tags = list(), list()
+    #     for word, tag in zip(words, tags):
+    #         pieces = tokenizer.tokenize(word)
+    #         if tag.startswith("B-"):
+    #             i_tag = tag.replace("B-", "I-")
+    #             piece_tags = [tag] + [i_tag for _ in range(len(pieces) - 1)]
+    #         else:
+    #             piece_tags = [tag for _ in pieces]
+    #         expanded_words.extend(pieces)
+    #         expanded_tags.extend(piece_tags)
+
+    #     return expanded_words, expanded_tags

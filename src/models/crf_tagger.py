@@ -3,22 +3,21 @@ Modified from https://github.com/allenai/allennlp-models/blob/main/allennlp_mode
 Removed some features that we don't need.
 """
 
-from typing import Dict, Optional, List, Any, cast
+from typing import Dict, List, Any, cast
 
-from overrides import overrides
 import torch
 
-from allennlp.common.checks import ConfigurationError
 from allennlp.data import TextFieldTensors, Vocabulary
-from allennlp.modules import Seq2SeqEncoder, TextFieldEmbedder
-from allennlp.modules import ConditionalRandomField
+from allennlp.modules.text_field_embedders import TextFieldEmbedder
+from allennlp.modules.seq2seq_encoders import Seq2SeqEncoder, PassThroughEncoder
 from allennlp.modules.conditional_random_field import allowed_transitions
 from allennlp.models.model import Model
-from allennlp.nn import InitializerApplicator
+from allennlp.nn.initializers import InitializerApplicator
 import allennlp.nn.util as util
-from allennlp.training.metrics import SpanBasedF1Measure
+from allennlp.training.metrics.span_based_f1_measure import SpanBasedF1Measure
 
-from allennlpadd.common.util import construct_from_params
+from ..modules.conditional_random_field import CRF
+from ..modules.timestep_dropout import TimestepDropout
 
 
 @Model.register("my_crf_tagger")
@@ -63,44 +62,28 @@ class CrfTagger(Model):
         self,
         vocab: Vocabulary,
         text_field_embedder: TextFieldEmbedder,
-        encoder: Dict[str, Any],
+        encoder: Seq2SeqEncoder,
         label_namespace: str = "labels",
         label_encoding: str = "BIO",
+        reduction: str = 'sum',
         include_start_end_transitions: bool = True,
-        constrain_crf_decoding: bool = True,
-        dropout: Optional[float] = None,
-        verbose_metrics: bool = False,
+        dropout: float = 0.2,
         initializer: InitializerApplicator = InitializerApplicator(),
         **kwargs,
     ) -> None:
         super().__init__(vocab, **kwargs)
-
-        self.label_namespace = label_namespace
         self.text_field_embedder = text_field_embedder
+        self.encoder = encoder
+        self.label_namespace = label_namespace
         self.num_tags = self.vocab.get_vocab_size(label_namespace)
-        self.encoder = construct_from_params(
-            Seq2SeqEncoder, input_size=text_field_embedder.get_output_dim(), **encoder)
-        self._verbose_metrics = verbose_metrics
-        if dropout:
-            self.dropout = torch.nn.Dropout(dropout)
-        else:
-            self.dropout = None
-
+        self.dropout = torch.nn.Dropout(dropout)
         self.tag_projection_layer = torch.nn.Linear(self.encoder.get_output_dim(), self.num_tags)
 
-        self.label_encoding = label_encoding
-        if constrain_crf_decoding:
-            if not label_encoding:
-                raise ConfigurationError(
-                    "constrain_crf_decoding is True, but no label_encoding was specified."
-                )
-            labels = self.vocab.get_index_to_token_vocabulary(label_namespace)
-            constraints = allowed_transitions(label_encoding, labels)
-        else:
-            constraints = None
-
-        self.crf = ConditionalRandomField(
-            self.num_tags, constraints, include_start_end_transitions=include_start_end_transitions
+        labels = self.vocab.get_index_to_token_vocabulary(label_namespace)
+        constraints = allowed_transitions(label_encoding, labels)
+        self.crf = CRF(
+            self.num_tags, reduction, constraints=constraints,
+            include_start_end_transitions=include_start_end_transitions
         )
 
         self._f1_metric = SpanBasedF1Measure(
@@ -109,7 +92,6 @@ class CrfTagger(Model):
 
         initializer(self)
 
-    @overrides
     def forward(
         self,  # type: ignore
         tokens: TextFieldTensors,
@@ -117,7 +99,6 @@ class CrfTagger(Model):
         metadata: List[Dict[str, Any]] = None,
         **kwargs,  # to allow for a more general dataset reader that passes args we don't need
     ) -> Dict[str, torch.Tensor]:
-
         """
         # Parameters
         tokens : `TextFieldTensors`, required
@@ -152,10 +133,6 @@ class CrfTagger(Model):
             embedded_text_input = self.dropout(embedded_text_input)
 
         encoded_text = self.encoder(embedded_text_input, mask)
-
-        if self.dropout:
-            encoded_text = self.dropout(encoded_text)
-
         logits = self.tag_projection_layer(encoded_text)
         best_paths = self.crf.viterbi_tags(logits, mask)
 
@@ -181,10 +158,9 @@ class CrfTagger(Model):
             output["words"] = [x["words"] for x in metadata]
         return output
 
-    @overrides
     def make_output_human_readable(
-        self, output_dict: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
+        self, output_dict: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """
         Converts the tag ids to the actual tags.
         `output_dict["tags"]` is a list of lists of tag_ids,
@@ -199,12 +175,12 @@ class CrfTagger(Model):
         output_dict["tags"] = [decode_tags(t) for t in output_dict["tags"]]
         return output_dict
 
-    @overrides
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         f1_dict = self._f1_metric.get_metric(reset=reset)
-        if self._verbose_metrics:
+        if reset:
             return f1_dict
         else:
-            return {x: y for x, y in f1_dict.items() if "overall" in x}
+            key = "f1-measure-overall"
+            return {key: f1_dict[key]}
 
     default_predictor = "sentence_tagger"
