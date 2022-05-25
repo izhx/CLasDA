@@ -1,5 +1,6 @@
 
 results/
+*.jpg
 
 # dev
 .vscode

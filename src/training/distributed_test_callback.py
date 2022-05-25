@@ -4,6 +4,7 @@ import logging
 from allennlp.common.params import Params
 from allennlp.data import DatasetReader, DataLoader
 from allennlp.training.util import evaluate
+from allennlp.training.metrics import Metric
 from allennlp.training.gradient_descent_trainer import GradientDescentTrainer
 from allennlp.training.callbacks.callback import TrainerCallback
 
@@ -21,12 +22,15 @@ class DistributedTestCallback(TrainerCallback):
         self.trainer = trainer
         if is_primary:
             params = Params.from_file(self.serialization_dir + "/config.json")
-            dataset_reader = DatasetReader.from_params(params['dataset_reader'])
-            self.test_data_loader = DataLoader.from_params(
-                params['data_loader'], reader=dataset_reader,
-                data_path=params['test_data_path']
-            )
-            self.test_data_loader.index_with(trainer.model.vocab)
+            if params['test_data_path'] is None:
+                self.test_data_loader = None
+            else:
+                dataset_reader = DatasetReader.from_params(params['dataset_reader'])
+                self.test_data_loader = DataLoader.from_params(
+                    params['data_loader'], reader=dataset_reader,
+                    data_path=params['test_data_path']
+                )
+                self.test_data_loader.index_with(trainer.model.vocab)
 
     def on_epoch(
         self,
@@ -39,7 +43,7 @@ class DistributedTestCallback(TrainerCallback):
         """
         This callback hook is called after the end of each epoch.
         """
-        if is_primary:
+        if is_primary and self.test_data_loader:
             self.set_metric_status(trainer, True)
             evaluate(
                 trainer.model, self.test_data_loader, trainer.cuda_device,
@@ -62,6 +66,7 @@ class DistributedTestCallback(TrainerCallback):
             self.set_metric_status(trainer, True)
 
     def set_metric_status(self, trainer, status: bool):
-        pass
-        # logger.info("set `_f1_metric.training_finished = %s`", status)
-        # trainer.model._f1_metric.training_finished = status
+        for k, v in trainer.model.__dict__.items():
+            if isinstance(v, Metric) and "training_finished" in v.__dict__:
+                logger.info("set `%s.training_finished = %s`", k, status)
+                v.training_finished = status

@@ -9,7 +9,7 @@ import torch
 
 from allennlp.data import TextFieldTensors, Vocabulary
 from allennlp.modules.text_field_embedders import TextFieldEmbedder
-from allennlp.modules.seq2seq_encoders import Seq2SeqEncoder, PassThroughEncoder
+from allennlp.modules.seq2seq_encoders import Seq2SeqEncoder
 from allennlp.modules.conditional_random_field import allowed_transitions
 from allennlp.models.model import Model
 from allennlp.nn.initializers import InitializerApplicator
@@ -17,7 +17,7 @@ import allennlp.nn.util as util
 from allennlp.training.metrics.span_based_f1_measure import SpanBasedF1Measure
 
 from ..modules.conditional_random_field import CRF
-from ..modules.timestep_dropout import TimestepDropout
+# from ..modules.timestep_dropout import TimestepDropout
 
 
 @Model.register("my_crf_tagger")
@@ -42,18 +42,8 @@ class CrfTagger(Model):
         Required if `calculate_span_f1` or `constrain_crf_decoding` is true.
     include_start_end_transitions : `bool`, optional (default=`True`)
         Whether to include start and end transition parameters in the CRF.
-    constrain_crf_decoding : `bool`, optional (default=`True`)
-        If `True`, the CRF is constrained at decoding time to
-        produce valid sequences of tags. If this is `True`, then
-        `label_encoding` is required. If `None` and
-        label_encoding is specified, this is set to `True`.
-        If `None` and label_encoding is not specified, it defaults
-        to `False`.
     dropout:  `float`, optional (default=`None`)
         Dropout probability.
-    verbose_metrics : `bool`, optional (default = `False`)
-        If true, metrics will be returned per label class in addition
-        to the overall statistics.
     initializer : `InitializerApplicator`, optional (default=`InitializerApplicator()`)
         Used to initialize the model parameters.
     """
@@ -97,7 +87,7 @@ class CrfTagger(Model):
         tokens: TextFieldTensors,
         tags: torch.LongTensor = None,
         metadata: List[Dict[str, Any]] = None,
-        **kwargs,  # to allow for a more general dataset reader that passes args we don't need
+        **kwargs,  # to allow for a more general dataset reader
     ) -> Dict[str, torch.Tensor]:
         """
         # Parameters
@@ -126,7 +116,7 @@ class CrfTagger(Model):
         loss : `torch.FloatTensor`, optional
             A scalar loss to be optimised. Only computed if gold label `tags` are provided.
         """
-        embedded_text_input = self.text_field_embedder(tokens, **kwargs)
+        embedded_text_input = self.text_field_embedder(tokens)
         mask = util.get_text_field_mask(tokens)
 
         if self.dropout:
