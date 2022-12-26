@@ -2,11 +2,9 @@
 
 Code for ACL-IJCNLP 2021 paper: "[Crowdsourcing Learning as Domain Adaptation: A Case Study on Named Entity Recognition](https://arxiv.org/abs/2105.14980)"
 
-Coming soon!
+This is the partially re-writted code based-on AllenNLP. I've reproduced the unsupervised setting results.
 
-I'm trying to rewrite the code with allennlp.
-
-For the original experiment code, please refer to [crowd-NER](https://github.com/izhx/crowd-NER).
+For the original experiment code and data, please refer to [crowd-NER](https://github.com/izhx/crowd-NER).
 
 
 ## Usage
